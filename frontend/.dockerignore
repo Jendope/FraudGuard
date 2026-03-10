@@ -1,0 +1,33 @@
+# Frontend .dockerignore — exclude files that should not be copied into the image.
+
+# Node modules (reinstalled in the builder stage)
+node_modules/
+
+# Build output (generated in the builder stage)
+dist/
+
+# Test artefacts
+coverage/
+
+# Environment files
+.env
+.env.*
+*.env
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile
+.dockerignore
