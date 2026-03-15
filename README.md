@@ -41,8 +41,8 @@ The project provides **two user-facing interfaces**, both served from a single N
 ### Step 1 — Clone and configure
 
 ```bash
-git clone https://github.com/Jendope/allinone.git
-cd allinone
+git clone https://github.com/Jendope/FraudGuard.git
+cd FraudGuard
 ```
 
 Copy the example environment file and fill in your API keys:
@@ -204,8 +204,8 @@ Invoke-RestMethod -Method Post -Uri http://localhost:5000/process `
 ### Option A — Automated Setup (macOS / Linux only)
 
 ```bash
-git clone https://github.com/Jendope/allinone.git
-cd allinone
+git clone https://github.com/Jendope/FraudGuard.git
+cd FraudGuard
 bash setup.sh
 ```
 
@@ -236,7 +236,7 @@ The Next.js web interface can be deployed to [Vercel](https://vercel.com). The b
 3. Set **Root Directory** to `FrauGuard`
 4. Set the following environment variables in Vercel:
    - `NEXT_PUBLIC_API_BASE` — your backend URL (e.g. `https://your-backend.onrender.com`)
-   - `NEXT_PUBLIC_GITHUB_REPO_URL` — your GitHub repo URL (defaults to `https://github.com/Jendope/allinone`)
+   - `NEXT_PUBLIC_GITHUB_REPO_URL` — your GitHub repo URL (defaults to `https://github.com/Jendope/FraudGuard`)
 5. Deploy
 
 ---
@@ -279,7 +279,7 @@ The Next.js web interface can be deployed to [Vercel](https://vercel.com). The b
 ## Project Structure
 
 ```
-allinone/
+FraudGuard/
 ├── .env.example          Single source of truth for ALL environment variables
 ├── backend/              Flask API (OCR + LLM + RAG)
 │   ├── app.py            Main server (/process, /api/analyze)
@@ -321,7 +321,7 @@ Two API keys are required. All others have sensible defaults.
 | `DEFAULT_MODE` | `raw` | Default mode (`raw` / `rag`) |
 | `RAG_TOP_K` | `3` | RAG retrieval count |
 | `NEXT_PUBLIC_API_BASE` | `http://localhost:5000` | Web interface → backend URL |
-| `NEXT_PUBLIC_GITHUB_REPO_URL` | `https://github.com/Jendope/allinone` | GitHub repo link in web interface |
+| `NEXT_PUBLIC_GITHUB_REPO_URL` | `https://github.com/Jendope/FraudGuard` | GitHub repo link in web interface |
 
 > **Standalone dev note:** `FrauGuard/.env` is only needed when running `npm run dev` without Docker. Copy the root `.env` there: `cp .env FrauGuard/.env`. With Docker Compose, all variables are injected automatically.
 
