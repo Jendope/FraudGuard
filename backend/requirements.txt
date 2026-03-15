@@ -1,0 +1,32 @@
+# Web framework
+flask>=3.0.0
+flask-cors>=4.0.0
+python-dotenv>=0.21.0
+# LangChain ecosystem (RAG + LLM integration)
+langchain-community>=0.4.0
+langchain-chroma>=1.0.0
+langchain-core>=1.2.0
+langchain-openai>=1.0.0
+# Pin pydantic>=2.11 for Python 3.14+ support; the Pydantic V1 compat
+# warning emitted by langchain-core is suppressed in app.py.
+pydantic>=2.11.0
+pydantic-settings>=2.0.0
+# Vector database
+chromadb>=1.5.4
+# Embeddings and ML
+sentence-transformers>=3.0.0
+transformers>=4.40.0
+# LLM API clients
+openai>=1.109.1
+requests>=2.31.0
+# ZhipuAI SDK for GLM-5 and GLM-OCR (BigModel)
+zai-sdk>=0.2.0
+# OCR → LLM pipeline dependencies
+Pillow>=10.0.0
+numpy>=1.24.0
+# Language detection (lightweight, no external API required)
+langdetect>=1.0.9
+# Testing
+pytest>=8.0.0
+# Production WSGI server
+gunicorn>=22.0.0

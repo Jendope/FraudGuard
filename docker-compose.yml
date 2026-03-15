@@ -1,0 +1,76 @@
+# docker-compose.yml — HK FraudGuard production deployment
+#
+# Services
+# --------
+#   backend   Flask API (OCR → LLM, RAG fraud detection)
+#   web       Next.js web interface (landing page + RAG pipeline demo)
+#
+# Quick start
+# -----------
+#   1. Copy .env.example to .env and fill in DASHSCOPE_API_KEY and BIGMODEL_API_KEY.
+#   2. docker compose up --build
+#   3. Open http://localhost:3000 in your browser.
+#
+# Environment variables (set in .env or the shell):
+#   DASHSCOPE_API_KEY  — required: Alibaba Cloud DashScope API key (Qwen LLM)
+#   BIGMODEL_API_KEY   — required: BigModel / ZhipuAI API key (GLM-OCR, GLM-5)
+#   LLM_MODEL          — optional: LLM model slug (default: qwen3.5-plus)
+#   OCR_MODEL          — optional: OCR model name (default: qwen-vl-ocr-2025-11-20)
+#   DEFAULT_MODE       — optional: "raw"|"rag" (default: raw)
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY}
+      BIGMODEL_API_KEY:  ${BIGMODEL_API_KEY:-}
+      DEFAULT_MODE:      ${DEFAULT_MODE:-raw}
+      LLM_MODEL:         ${LLM_MODEL:-qwen3.5-plus}
+      OCR_MODEL:         ${OCR_MODEL:-qwen-vl-ocr-2025-11-20}
+      EMBED_MODEL:       ${EMBED_MODEL:-BAAI/bge-large-zh-v1.5}
+      RAG_TOP_K:         ${RAG_TOP_K:-3}
+      CHROMA_DB_PATH:    /app/chroma_hk01_scam_db
+      DEBUG:             "false"
+    volumes:
+      # Named volume for cached HuggingFace model weights.
+      - model_cache:/root/.cache
+    ports:
+      # Expose the backend port for direct access during development.
+      - "5000:5000"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  web:
+    build:
+      context: ./FrauGuard
+      dockerfile: Dockerfile
+      args:
+        # NEXT_PUBLIC_* vars are inlined at build time by Next.js.
+        # The default (http://localhost:5000) works because the backend
+        # port is published to the host.
+        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:5000}
+        NEXT_PUBLIC_GITHUB_REPO_URL: ${NEXT_PUBLIC_GITHUB_REPO_URL:-https://github.com/Jendope/allinone}
+    restart: unless-stopped
+    environment:
+      # Runtime env vars for Next.js API routes (server-side only).
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY}
+      ZAI_API_KEY:       ${BIGMODEL_API_KEY:-}
+      ZAI_BASE_URL:      ${ZAI_BASE_URL:-https://open.bigmodel.cn/api/paas/v4}
+      NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://backend:5000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  model_cache:
+    driver: local
