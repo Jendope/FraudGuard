@@ -57,7 +57,7 @@ services:
         # The default (http://localhost:5000) works because the backend
         # port is published to the host.
         NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:5000}
-        NEXT_PUBLIC_GITHUB_REPO_URL: ${NEXT_PUBLIC_GITHUB_REPO_URL:-https://github.com/Jendope/allinone}
+        NEXT_PUBLIC_GITHUB_REPO_URL: ${NEXT_PUBLIC_GITHUB_REPO_URL:-https://github.com/Jendope/FraudGuard}
     restart: unless-stopped
     environment:
       # Runtime env vars for Next.js API routes (server-side only).

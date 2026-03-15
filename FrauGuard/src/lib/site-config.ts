@@ -11,7 +11,7 @@
 // ── GitHub repository URL ─────────────────────────────────────────────────
 // Change this value (or set NEXT_PUBLIC_GITHUB_REPO_URL) when the repo moves.
 export const GITHUB_REPO_URL =
-  process.env.NEXT_PUBLIC_GITHUB_REPO_URL || 'https://github.com/Jendope/allinone'
+  process.env.NEXT_PUBLIC_GITHUB_REPO_URL || 'https://github.com/Jendope/FraudGuard'
 
 export const GITHUB_README_URL = `${GITHUB_REPO_URL}/blob/main/README.md`
 

@@ -24,8 +24,8 @@
 ### 第 1 步 — 複製並設定
 
 ```bash
-git clone https://github.com/Jendope/allinone.git
-cd allinone
+git clone https://github.com/Jendope/FraudGuard.git
+cd FraudGuard
 ```
 
 複製範例環境檔並填入 API 金鑰：
@@ -172,8 +172,8 @@ Invoke-RestMethod -Method Post -Uri http://localhost:5000/api/analyze `
 ### 方式 A — 自動安裝（僅限 macOS / Linux）
 
 ```bash
-git clone https://github.com/Jendope/allinone.git
-cd allinone
+git clone https://github.com/Jendope/FraudGuard.git
+cd FraudGuard
 bash setup.sh
 ```
 

@@ -35,7 +35,7 @@ COPY . .
 # NEXT_PUBLIC_* vars must be available at build time because Next.js inlines
 # them into the client-side JavaScript bundle.
 ARG NEXT_PUBLIC_API_BASE=http://localhost:5000
-ARG NEXT_PUBLIC_GITHUB_REPO_URL=https://github.com/Jendope/allinone
+ARG NEXT_PUBLIC_GITHUB_REPO_URL=https://github.com/Jendope/FraudGuard
 ENV NEXT_PUBLIC_API_BASE=$NEXT_PUBLIC_API_BASE
 ENV NEXT_PUBLIC_GITHUB_REPO_URL=$NEXT_PUBLIC_GITHUB_REPO_URL
 
