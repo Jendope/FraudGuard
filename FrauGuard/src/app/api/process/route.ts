@@ -1,36 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getZAI } from '@/lib/zai'
 import { OCR_MODEL, OCR_CONFIG, getCurrentOcrConfig, type OcrModelKey } from '@/lib/site-config'
+import OpenAI from 'openai'
 
-// GLM-OCR API response types (BigModel layout parsing)
-interface GlmOcrLayoutItem {
-  index: number
-  label: string
-  bbox_2d: [number, number, number, number]
-  content: string
-  height: number
-  width: number
+// GLM-OCR API response types (file upload endpoint)
+interface GlmOcrWordResult {
+  words: string
+  location?: { left: number; top: number; width: number; height: number }
+  probability?: { average: number; variance: number; min: number }
 }
 
-interface GlmOcrResponse {
-  id: string
-  created: number
-  model: string
-  md_results: string
-  layout_details: GlmOcrLayoutItem[][]
-  layout_visualization: string[]
+interface GlmOcrFileResponse {
+  task_id?: string
+  message?: string
+  status?: string
+  words_result_num?: number
+  words_result?: GlmOcrWordResult[]
   error?: { code: string; message: string }
-}
-
-// Qwen VL OCR response types
-interface QwenOcrResponse {
-  output?: {
-    text?: string
-    markdown?: string
-  }
-  text?: string
-  content?: string
-  usage?: any
 }
 
 // OCR analysis prompt
@@ -45,6 +31,22 @@ If the content appears to be a scam or fraudulent message (like phishing, lotter
 
 Respond in a clear, easy-to-understand manner suitable for all ages including elderly users.`
 
+// ✅ Helper: Get correct LLM client based on model provider
+async function getLLMClient(model: string) {
+  const isQwen = model.startsWith('qwen')
+  
+  if (isQwen) {
+    // ✅ Qwen: Use OpenAI SDK with DashScope OpenAI-compatible endpoint
+    return new OpenAI({
+      apiKey: process.env.DASHSCOPE_API_KEY,
+      baseURL: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+    })
+  } else {
+    // ✅ GLM: Use zai SDK with BigModel endpoint (configured in zai.ts)
+    return await getZAI()
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
@@ -53,7 +55,7 @@ export async function POST(request: NextRequest) {
     const prompt = formData.get('prompt') as string || ''
     // ✅ Allow override via request, but default to config
     const ocrModel = (formData.get('ocr_model') as string) || OCR_MODEL
-    // ✅ NEW: Allow LLM model override, default to config (Qwen by default)
+    // ✅ Allow LLM model override, default to config (Qwen by default)
     const llmModel = (formData.get('llm_model') as string) || 
                      process.env.LLM_MODEL || 
                      'qwen3.5-plus'  // ✅ Qwen default
@@ -74,7 +76,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Convert file to base64
+    // Convert file to base64 (for Qwen) AND keep original File (for GLM)
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
     
@@ -107,109 +109,136 @@ export async function POST(request: NextRequest) {
       using: OCR_MODEL, 
       provider: modelConfig.provider,
       endpoint: modelConfig.endpoint,
-      isNative: modelConfig.isNative 
+      isChatFormat: modelConfig.isChatFormat 
     })
-
-    // Initialize ZAI (with /tmp fix in src/lib/zai.ts)
-    const zai = await getZAI()
 
     // Use appropriate OCR endpoint based on model
     let ocrText = ''
-    let layoutDetails: GlmOcrLayoutItem[][] = []
-    let layoutVisualization: string[] = []
+    let layoutDetails = []
+    let layoutVisualization = []
     
     try {
       console.log("🔍 Calling OCR API...", { model: ocrModel, provider: modelConfig.provider })
       
       let apiUrl: string
-      if (modelConfig.isNative) {
-        // Qwen VL OCR: Use DashScope native endpoint (replace baseUrl entirely)
-        apiUrl = `https://dashscope-intl.aliyuncs.com${modelConfig.endpoint}`.trim()
+      if (modelConfig.isChatFormat) {
+        // Qwen VL OCR: Use OpenAI-compatible /chat/completions endpoint
+        apiUrl = `${baseUrl}/chat/completions`.trim()
       } else {
-        // GLM-OCR: Use OpenAI-compatible baseUrl + endpoint
+        // GLM-OCR: Use file upload endpoint
         apiUrl = `${baseUrl}${modelConfig.endpoint}`.trim()
       }
       
-      // ✅ Debug log the final request
       console.log("🔗 OCR API Request:", {
         url: apiUrl,
         model: ocrModel,
         mimeType: mimeType,
         base64Length: base64.length,
         hasTrailingSpace: apiUrl.endsWith(' '),
-        apiKeySet: !!apiKey
+        apiKeySet: !!apiKey,
+        format: modelConfig.isChatFormat ? 'json' : 'multipart'
       })
       
-      // ✅ Build request body based on provider
-      const requestBody = modelConfig.provider === 'qwen'
-        ? {
-            // Qwen VL OCR format (DashScope native)
-            model: ocrModel,
-            input: {
-              image: `data:${mimeType};base64,${base64}`  // ✅ '' prefix required
-            },
-            parameters: {
-              output_format: 'markdown'
-            }
-          }
-        : {
-            // GLM-OCR format (OpenAI-compatible)
-            model: ocrModel,
-            image_url: {
-              url: `data:${mimeType};base64,${base64}`  // ✅ '' prefix for consistency
-            }
-          }
+      let ocrRes: Response
       
-      const ocrRes = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify(requestBody)
-      })
+      if (modelConfig.isChatFormat) {
+        // ✅ Qwen VL OCR via OpenAI-compatible endpoint (JSON body)
+        const requestBody = {
+          model: ocrModel,
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: `data:${mimeType};base64,${base64}`
+                  },
+                  min_pixels: 32 * 32 * 3,    // 3K min
+                  max_pixels: 32 * 32 * 8192  // 8K max
+                }
+              ]
+            }
+          ]
+        }
+        
+        ocrRes = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify(requestBody)
+        })
+      } else {
+        // ✅ GLM-OCR via file upload endpoint (multipart/form-data)
+        const formData = new FormData()
+        
+        // Convert base64 back to Blob for file upload
+        const binary = atob(base64)
+        const array = new Uint8Array(binary.length)
+        for (let i = 0; i < binary.length; i++) {
+          array[i] = binary.charCodeAt(i)
+        }
+        const blob = new Blob([array], { type: mimeType })
+        
+        formData.append('file', blob, `upload.${mimeType.split('/')[1] || 'png'}`)
+        formData.append('tool_type', 'hand_write')  // or 'print' for printed text
+        formData.append('language_type', 'CHN_ENG')
+        formData.append('probability', 'true')
+        
+        ocrRes = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: formData
+        })
+      }
 
       if (!ocrRes.ok) {
         const errBody = await ocrRes.text().catch(() => 'No error body')
         console.error(`❌ OCR API error (${ocrModel}): ${ocrRes.status} - ${errBody}`)
-        console.error("🔍 Debug request:", {
-          apiUrl: apiUrl,
-          requestBody: JSON.stringify(requestBody).substring(0, 300) + '...'
-        })
         throw new Error(`OCR request failed: ${ocrRes.status} - ${errBody}`)
       }
 
       const ocrData = await ocrRes.json()
-
       console.log("📄 OCR Raw Response Preview:", 
         JSON.stringify(ocrData, null, 2).substring(0, 500) + '...')
 
-      // ✅ Parse response based on provider
-      if (modelConfig.provider === 'qwen') {
-        // Qwen VL OCR response parsing: { output: { text: "...", markdown: "..." } }
-        const qwenData = ocrData as QwenOcrResponse
-        if (qwenData.output?.text) {
-          ocrText = qwenData.output.text.trim()
-        } else if (qwenData.output?.markdown) {
-          ocrText = qwenData.output.markdown.trim()
-        } else if (qwenData.text) {
-          ocrText = qwenData.text.trim()
-        } else {
-          console.warn("⚠️ Qwen OCR: No text found in response, using fallback")
-          ocrText = ''
+      // ✅ Parse response based on format
+      if (modelConfig.isChatFormat) {
+        // ✅ Qwen via OpenAI-compatible: response in choices[0].message.content
+        const content = (ocrData as any).choices?.[0]?.message?.content || ''
+        
+        // Try to parse as JSON if prompt requested it, otherwise use raw text
+        try {
+          const parsed = JSON.parse(content)
+          ocrText = parsed.text || parsed.content || JSON.stringify(parsed)
+        } catch {
+          ocrText = content.trim()
         }
-        // Qwen native doesn't return layout_details like GLM
+        
+        // OpenAI-compatible OCR doesn't return layout details
         layoutDetails = []
         layoutVisualization = []
       } else {
-        // GLM-OCR response parsing: { md_results: "...", layout_details: [...] }
-        const glmData = ocrData as GlmOcrResponse
+        // ✅ GLM-OCR response: { words_result: [{ words: "..." }], task_id: "..." }
+        const glmData = ocrData as GlmOcrFileResponse
+        
         if (glmData.error) {
-          throw new Error(`GLM OCR error ${glmData.error.code}: ${glmData.error.message}`)
+          throw new Error(`GLM OCR error: ${glmData.error.message}`)
         }
-        ocrText = (glmData.md_results ?? '').trim()
-        layoutDetails = glmData.layout_details ?? []
-        layoutVisualization = glmData.layout_visualization ?? []
+        
+        if (glmData.words_result?.length) {
+          ocrText = glmData.words_result.map(r => r.words).join('\n').trim()
+        } else {
+          console.warn("⚠️ GLM-OCR: No words found in response")
+          ocrText = ''
+        }
+        // GLM file upload endpoint doesn't return layout_details
+        layoutDetails = []
+        layoutVisualization = []
       }
       
       console.log("✅ OCR extracted:", 
@@ -250,7 +279,9 @@ Please provide a comprehensive analysis.
 - Be thorough but easy to understand for all ages.`
 
       try {
-        const completion = await zai.chat.completions.create({
+        // ✅ Use dynamic client based on model provider
+        const client = await getLLMClient(llmModel)
+        const completion = await client.chat.completions.create({
           model: llmModel,
           messages: [
             { role: 'system', content: ragPrompt },
@@ -274,7 +305,9 @@ Please provide a comprehensive analysis.
         .replace('{prompt}', userPrompt)
 
       try {
-        const completion = await zai.chat.completions.create({
+        // ✅ Use dynamic client based on model provider
+        const client = await getLLMClient(llmModel)
+        const completion = await client.chat.completions.create({
           model: llmModel,
           messages: [
             { role: 'system', content: rawPrompt },
@@ -307,7 +340,7 @@ Please provide a comprehensive analysis.
         mode,
         ocr_model: ocrModel,
         ocr_provider: modelConfig.provider,
-        llm_model: llmModel,  // ✅ NEW: Return which LLM was used
+        llm_model: llmModel,
         chunk_count: mode === 'rag' ? ocrText.split(/\n\n+/).length : undefined
       }
     })

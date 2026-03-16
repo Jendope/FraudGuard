@@ -26,31 +26,31 @@ export const API_BASE_URL =
 //    OCR_MODEL: 'qwen-vl-ocr-2025-11-20' → 'glm-ocr'
 //    LLM_MODEL: 'qwen-3.5-plus' → 'glm-5'
 
-export const OCR_MODEL = process.env.OCR_MODEL || 'qwen-vl-ocr-2025-11-20'  // Qwen default
+export const OCR_MODEL = process.env.OCR_MODEL || 'qwen-vl-ocr'  // Qwen default
 export const LLM_MODEL = process.env.LLM_MODEL || 'qwen-3.5-plus'            // Qwen default
 
 // OCR model configurations
 export const OCR_CONFIG = {
   // Qwen VL OCR (DashScope native endpoint)
   'qwen-vl-ocr-2025-11-20': {
-    endpoint: '/api/v1/services/aigc/multimodal-generation/generation',
+    endpoint: '/chat/completions',
     provider: 'qwen',
-    isNative: true,
-    description: 'Qwen VL OCR - Latest',
+    isChatFormat: true,
+    description: 'Qwen VL OCR - Latest (OpenAI-compatible)',
   },
   'qwen-vl-ocr': {
-    endpoint: '/api/v1/services/aigc/multimodal-generation/generation',
+    endpoint: '/chat/completions',
     provider: 'qwen',
-    isNative: true,
-    description: 'Qwen VL OCR - Stable',
+    isChatFormat: true,
+    description: 'Qwen VL OCR - Stable (OpenAI-compatible)',
   },
   // GLM-OCR (OpenAI-compatible endpoint)
   'glm-ocr': {
-    endpoint: '/layout_parsing',
-    provider: 'glm',
-    isNative: false,
-    description: 'GLM-OCR - Layout parsing',
-  },
+  endpoint: '/api/paas/v4/files/ocr',
+  provider: 'glm',
+  isChatFormat: false,
+  description: 'GLM-OCR - File upload endpoint',
+},
 } as const
 
 // Type for OCR model keys (for TypeScript safety)
