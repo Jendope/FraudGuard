@@ -27,10 +27,6 @@ htmlcov/
 # Node.js
 node_modules/
 
-# Frontend build artifacts
-frontend/dist/
-frontend/.vite/
-
 # Vercel
 .vercel/
 

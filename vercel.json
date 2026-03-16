@@ -1,7 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "buildCommand": "cd FrauGuard && npm install",
-  "outputDirectory": "FrauGuard/dist",
-  "installCommand": "cd FrauGuard && npm install"
+  "rootDirectory": "FrauGuard",
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "installCommand": "npm install",
+  "env": {
+    "NODE_VERSION": "20"
+  }
 }
