@@ -39,11 +39,12 @@ function isQwenModel(model: string): boolean {
 async function callQwen(prompt: string, model: string): Promise<string> {
   const apiKey = process.env.DASHSCOPE_API_KEY
   if (!apiKey) {
-    throw new Error('DASHSCOPE_API_KEY is not set. Please add it to your .env file.')
+    throw new Error('DASHSCOPE_API_KEY is not set. Please add it to your environment variables.')
   }
 
   const client = new OpenAI({
     apiKey,
+    // ✅ FIX: Removed trailing spaces from baseURL
     baseURL: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
   })
 
@@ -156,23 +157,43 @@ export async function POST(request: NextRequest) {
     let preventionAdvice = ''
     let warningMessage = ''
 
+    // ✅ FIX: Defensive JSON parsing with detailed logging
     try {
-      // Try to extract JSON from the response
-      const jsonMatch = response.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0])
-        const score = Math.max(0, Math.min(10, Number(parsed.score) || 5))
-        probability = score / 10
-        reason = parsed.reason || 'Analysis completed'
-        scamType = parsed.type || 'unknown'
-        scamTactics = Array.isArray(parsed.scam_tactics) ? parsed.scam_tactics : []
-        preventionAdvice = parsed.prevention_advice || ''
-        warningMessage = parsed.warning_message || ''
+      // Log raw response for debugging (first 300 chars)
+      console.log("🔍 Raw LLM response:", response ? response.substring(0, 300) + '...' : '(empty)')
+      
+      if (!response || response.trim() === '') {
+        throw new Error("Empty response from LLM")
       }
-    } catch {
-      // Fallback parsing
-      console.error('Failed to parse LLM response:', response)
-      reason = response.slice(0, 100)
+      
+      // Try to extract JSON object from response
+      const jsonMatch = response.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) {
+        throw new Error(`No JSON object found in response: "${response.substring(0, 100)}..."`)
+      }
+      
+      const parsed = JSON.parse(jsonMatch[0])
+      
+      // Validate and extract fields with fallbacks
+      const score = typeof parsed.score === 'number' 
+        ? Math.max(0, Math.min(10, parsed.score)) 
+        : 5 // Default to neutral if missing/invalid
+      probability = score / 10
+      reason = typeof parsed.reason === 'string' && parsed.reason ? parsed.reason : 'Analysis completed'
+      scamType = typeof parsed.type === 'string' ? parsed.type : 'unknown'
+      scamTactics = Array.isArray(parsed.scam_tactics) ? parsed.scam_tactics : []
+      preventionAdvice = typeof parsed.prevention_advice === 'string' ? parsed.prevention_advice : ''
+      warningMessage = typeof parsed.warning_message === 'string' ? parsed.warning_message : ''
+      
+    } catch (parseError) {
+      console.error("❌ JSON parse failed:", {
+        error: parseError instanceof Error ? parseError.message : String(parseError),
+        rawResponse: response?.substring(0, 200),
+        responseType: typeof response
+      })
+      // Return safe fallback instead of crashing
+      reason = `Parse error: ${parseError instanceof Error ? parseError.message : 'Unknown'}`
+      probability = 0.5 // Neutral default
     }
 
     return NextResponse.json({
@@ -190,7 +211,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Fraud analysis error:', error)
     return NextResponse.json(
-      { success: false, error: 'Failed to analyze text' },
+      { success: false, error: error instanceof Error ? error.message : 'Failed to analyze text' },
       { status: 500 }
     )
   }

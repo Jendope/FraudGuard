@@ -1,3 +1,6 @@
+if os.getenv("RENDER", False) or os.getenv("PORT"):
+    CHROMA_DB_PATH = "/tmp/chroma_hk01_scam_db"
+
 import json
 import logging
 import os
@@ -84,7 +87,10 @@ def _get_rag_client():
 # ============================================
 # Allow the ChromaDB path to be overridden via env var for Docker deployments.
 _default_chroma_path = os.path.join(os.path.dirname(__file__), "chroma_hk01_scam_db")
-CHROMA_DB_PATH = os.getenv("CHROMA_DB_PATH", _default_chroma_path)
+if os.getenv("RENDER") or os.getenv("PORT"):
+    CHROMA_DB_PATH = os.getenv("CHROMA_DB_PATH", "/tmp/chroma_hk01_scam_db")
+else:
+    CHROMA_DB_PATH = os.getenv("CHROMA_DB_PATH", _default_chroma_path)
 
 if not DASHSCOPE_API_KEY:
     raise ValueError("Please set DASHSCOPE_API_KEY in .env file")
@@ -444,6 +450,8 @@ def health_check():
     """Health check endpoint"""
     # Return the document count only when the vectorstore is already
     # initialised to keep the health check fast on cold starts.
+    logger.info(f"Health check: CHROMA_DB_PATH={CHROMA_DB_PATH}, exists={os.path.exists(CHROMA_DB_PATH)}")
+
     doc_count = (
         _fraud_vectorstore._collection.count()
         if _fraud_vectorstore is not None
@@ -454,6 +462,7 @@ def health_check():
         'model': LLM_MODEL,
         'documents': doc_count,
         'supported_languages': SUPPORTED_LANGUAGES,
+        'chroma_path': CHROMA_DB_PATH,
     })
 
 @app.route('/api/analyze', methods=['POST'])
