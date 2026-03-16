@@ -1,5 +1,3 @@
-import fs from 'fs/promises'
-import path from 'path'
 import { NextRequest, NextResponse } from 'next/server'
 import { getZAI } from '@/lib/zai'
 
@@ -64,20 +62,31 @@ export async function POST(request: NextRequest) {
     // Convert file to base64
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
+    
+    // Check file size (Vercel Hobby limit: ~4.5MB request body)
+    if (buffer.length > 4 * 1024 * 1024) {
+      return NextResponse.json(
+        { error: 'Image too large. Please upload an image under 4MB.' },
+        { status: 400 }
+      )
+    }
+    
     const base64 = buffer.toString('base64')
     const mimeType = file.type || 'image/jpeg'
 
-    // Initialize ZAI (ensures .z-ai-config exists)
-    const zai = await getZAI()
+    const apiKey = process.env.Z_AI_API_KEY || process.env.DASHSCOPE_API_KEY
+    const baseUrl = process.env.Z_AI_BASE_URL || process.env.DASHSCOPE_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'
 
-    // Read API credentials for direct GLM-OCR API call
-    const configPath = path.join(process.cwd(), '.z-ai-config')
-    const configRaw = await fs.readFile(configPath, 'utf-8')
-    const { apiKey, baseUrl } = JSON.parse(configRaw) as { apiKey: string; baseUrl: string }
-
-    if (!apiKey || !baseUrl) {
-      throw new Error('Invalid .z-ai-config: missing apiKey or baseUrl')
+    if (!apiKey) {
+      console.error('❌ Missing API key. Set Z_AI_API_KEY or DASHSCOPE_API_KEY in environment variables.')
+      return NextResponse.json(
+        { error: 'Server configuration error: Missing API key' },
+        { status: 500 }
+      )
     }
+
+    // Initialize ZAI (with /tmp fix in src/lib/zai.ts)
+    const zai = await getZAI()
 
     // Use GLM-OCR layout_parsing endpoint for image text extraction
     let ocrText = ''
@@ -85,9 +94,8 @@ export async function POST(request: NextRequest) {
     let layoutVisualization: string[] = []
     
     try {
-      // Call the dedicated GLM-OCR layout parsing API
-      // Endpoint: POST /layout_parsing, Model: glm-ocr
-      // Docs: https://docs.bigmodel.cn/api-reference/模型-api/版面解析
+      console.log("🔍 Calling GLM-OCR API...")
+      
       const ocrRes = await fetch(`${baseUrl}/layout_parsing`, {
         method: 'POST',
         headers: {
@@ -103,8 +111,9 @@ export async function POST(request: NextRequest) {
       })
 
       if (!ocrRes.ok) {
-        const errBody = await ocrRes.text()
-        throw new Error(`GLM-OCR layout parsing request failed with status ${ocrRes.status}: ${errBody}`)
+        const errBody = await ocrRes.text().catch(() => 'No error body')
+        console.error(`❌ GLM-OCR API error: ${ocrRes.status} - ${errBody}`)
+        throw new Error(`GLM-OCR request failed: ${ocrRes.status}`)
       }
 
       const ocrData = await ocrRes.json() as GlmOcrResponse
@@ -113,12 +122,14 @@ export async function POST(request: NextRequest) {
         throw new Error(`OCR API error ${ocrData.error.code}: ${ocrData.error.message}`)
       }
 
-      // md_results is the full markdown text of the extracted document
       ocrText = (ocrData.md_results ?? '').trim()
       layoutDetails = ocrData.layout_details ?? []
       layoutVisualization = ocrData.layout_visualization ?? []
+      
+      console.log("✅ OCR extracted:", ocrText.substring(0, 100) + (ocrText.length > 100 ? '...' : ''))
+      
     } catch (visionError) {
-      console.error('Vision error:', visionError)
+      console.error('❌ Vision processing error:', visionError)
       return NextResponse.json(
         { error: 'Failed to process image. Please try a different image.' },
         { status: 500 }
@@ -151,46 +162,48 @@ Please provide a comprehensive analysis.
 - If it's a legitimate document, summarize the key information.
 - Be thorough but easy to understand for all ages.`
 
-      const completion = await zai.chat.completions.create({
-        model: 'glm-5',
-        messages: [
-          { role: 'system', content: ragPrompt },
-          { role: 'user', content: 'Please provide your analysis.' }
-        ]
-      })
+      try {
+        const completion = await zai.chat.completions.create({
+          model: 'glm-5',
+          messages: [
+            { role: 'system', content: ragPrompt },
+            { role: 'user', content: 'Please provide your analysis.' }
+          ]
+        })
 
-      if (!completion || !completion.choices || completion.choices.length === 0) {
-        console.error('Unexpected completion response (missing choices):', completion)
-        return NextResponse.json(
-          { error: 'Invalid response from analysis service' },
-          { status: 502 }
-        )
+        if (!completion?.choices?.length) {
+          throw new Error('Empty or invalid completion response')
+        }
+
+        llmOutput = completion.choices[0]?.message?.content || ''
+      } catch (llmError) {
+        console.error('❌ RAG LLM call failed:', llmError)
+        llmOutput = 'Analysis unavailable due to processing error.'
       }
-
-      llmOutput = completion.choices[0]?.message?.content || ''
     } else {
       // Raw mode: direct analysis
       const rawPrompt = ANALYSIS_PROMPT
         .replace('{ocr_text}', ocrText)
         .replace('{prompt}', userPrompt)
 
-      const completion = await zai.chat.completions.create({
-        model: 'glm-5',
-        messages: [
-          { role: 'system', content: rawPrompt },
-          { role: 'user', content: 'Please provide your analysis.' }
-        ]
-      })
+      try {
+        const completion = await zai.chat.completions.create({
+          model: 'glm-5',
+          messages: [
+            { role: 'system', content: rawPrompt },
+            { role: 'user', content: 'Please provide your analysis.' }
+          ]
+        })
 
-      if (!completion || !completion.choices || completion.choices.length === 0) {
-        console.error('Unexpected completion response (missing choices):', completion)
-        return NextResponse.json(
-          { error: 'Invalid response from analysis service' },
-          { status: 502 }
-        )
+        if (!completion?.choices?.length) {
+          throw new Error('Empty or invalid completion response')
+        }
+
+        llmOutput = completion.choices[0]?.message?.content || ''
+      } catch (llmError) {
+        console.error('❌ Raw LLM call failed:', llmError)
+        llmOutput = 'Analysis unavailable due to processing error.'
       }
-
-      llmOutput = completion.choices[0]?.message?.content || ''
     }
 
     return NextResponse.json({
@@ -209,9 +222,9 @@ Please provide a comprehensive analysis.
     })
 
   } catch (error) {
-    console.error('OCR processing error:', error)
+    console.error('❌ OCR processing error:', error)
     return NextResponse.json(
-      { error: 'Failed to process image' },
+      { error: error instanceof Error ? error.message : 'Failed to process image' },
       { status: 500 }
     )
   }
