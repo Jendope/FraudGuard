@@ -53,12 +53,13 @@ export async function POST(request: NextRequest) {
     const prompt = formData.get('prompt') as string || ''
     // ✅ Allow override via request, but default to config
     const ocrModel = (formData.get('ocr_model') as string) || OCR_MODEL
+    // ✅ NEW: Allow LLM model override, default to config (Qwen by default)
+    const llmModel = (formData.get('llm_model') as string) || 
+                     process.env.LLM_MODEL || 
+                     'qwen3.5-plus'  // ✅ Qwen default
 
     if (!file) {
-      return NextResponse.json(
-        { error: 'No file uploaded' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'No file uploaded' }, { status: 400 })
     }
 
     // Validate file type
@@ -88,7 +89,6 @@ export async function POST(request: NextRequest) {
     const base64 = buffer.toString('base64')
     const mimeType = file.type || 'image/jpeg'
 
-    // ✅ FIX: Remove trailing spaces + add .trim() for env var safety
     const apiKey = (process.env.Z_AI_API_KEY || process.env.DASHSCOPE_API_KEY || '').trim()
     const baseUrl = (process.env.Z_AI_BASE_URL || process.env.DASHSCOPE_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').trim()
 
@@ -101,12 +101,13 @@ export async function POST(request: NextRequest) {
     }
 
     // ✅ Get validated model config from site-config.ts
-    const modelConfig = getCurrentOcrConfig()
+    const modelConfig = getCurrentOcrConfig(ocrModel)
     console.log("🔍 OCR Model Selected:", { 
       requested: ocrModel, 
       using: OCR_MODEL, 
       provider: modelConfig.provider,
-      endpoint: modelConfig.endpoint 
+      endpoint: modelConfig.endpoint,
+      isNative: modelConfig.isNative 
     })
 
     // Initialize ZAI (with /tmp fix in src/lib/zai.ts)
@@ -120,7 +121,14 @@ export async function POST(request: NextRequest) {
     try {
       console.log("🔍 Calling OCR API...", { model: ocrModel, provider: modelConfig.provider })
       
-      const apiUrl = `${baseUrl}${modelConfig.endpoint}`
+      let apiUrl: string
+      if (modelConfig.isNative) {
+        // Qwen VL OCR: Use DashScope native endpoint (replace baseUrl entirely)
+        apiUrl = `https://dashscope-intl.aliyuncs.com${modelConfig.endpoint}`.trim()
+      } else {
+        // GLM-OCR: Use OpenAI-compatible baseUrl + endpoint
+        apiUrl = `${baseUrl}${modelConfig.endpoint}`.trim()
+      }
       
       // ✅ Debug log the final request
       console.log("🔗 OCR API Request:", {
@@ -133,22 +141,22 @@ export async function POST(request: NextRequest) {
       })
       
       // ✅ Build request body based on provider
-      const requestBody = modelConfig.provider === 'qwen' 
+      const requestBody = modelConfig.provider === 'qwen'
         ? {
-            // Qwen VL OCR format
+            // Qwen VL OCR format (DashScope native)
             model: ocrModel,
             input: {
-              image: `data:${mimeType};base64,${base64}`  // ✅ '' prefix for data URL
+              image: `data:${mimeType};base64,${base64}`  // ✅ '' prefix required
             },
             parameters: {
               output_format: 'markdown'
             }
           }
         : {
-            // GLM-OCR format
+            // GLM-OCR format (OpenAI-compatible)
             model: ocrModel,
             image_url: {
-              url: `data:${mimeType};base64,${base64}`  // ✅ '' prefix for data URL
+              url: `data:${mimeType};base64,${base64}`  // ✅ '' prefix for consistency
             }
           }
       
@@ -164,6 +172,10 @@ export async function POST(request: NextRequest) {
       if (!ocrRes.ok) {
         const errBody = await ocrRes.text().catch(() => 'No error body')
         console.error(`❌ OCR API error (${ocrModel}): ${ocrRes.status} - ${errBody}`)
+        console.error("🔍 Debug request:", {
+          apiUrl: apiUrl,
+          requestBody: JSON.stringify(requestBody).substring(0, 300) + '...'
+        })
         throw new Error(`OCR request failed: ${ocrRes.status} - ${errBody}`)
       }
 
@@ -174,7 +186,7 @@ export async function POST(request: NextRequest) {
 
       // ✅ Parse response based on provider
       if (modelConfig.provider === 'qwen') {
-        // Qwen VL OCR response parsing
+        // Qwen VL OCR response parsing: { output: { text: "...", markdown: "..." } }
         const qwenData = ocrData as QwenOcrResponse
         if (qwenData.output?.text) {
           ocrText = qwenData.output.text.trim()
@@ -183,14 +195,14 @@ export async function POST(request: NextRequest) {
         } else if (qwenData.text) {
           ocrText = qwenData.text.trim()
         } else {
-          console.warn("⚠️ Qwen OCR: No text found, using fallback")
+          console.warn("⚠️ Qwen OCR: No text found in response, using fallback")
           ocrText = ''
         }
-        // Qwen doesn't return layout_details like GLM
+        // Qwen native doesn't return layout_details like GLM
         layoutDetails = []
         layoutVisualization = []
       } else {
-        // GLM-OCR response parsing
+        // GLM-OCR response parsing: { md_results: "...", layout_details: [...] }
         const glmData = ocrData as GlmOcrResponse
         if (glmData.error) {
           throw new Error(`GLM OCR error ${glmData.error.code}: ${glmData.error.message}`)
@@ -239,7 +251,7 @@ Please provide a comprehensive analysis.
 
       try {
         const completion = await zai.chat.completions.create({
-          model: 'glm-5',
+          model: llmModel,
           messages: [
             { role: 'system', content: ragPrompt },
             { role: 'user', content: 'Please provide your analysis.' }
@@ -263,7 +275,7 @@ Please provide a comprehensive analysis.
 
       try {
         const completion = await zai.chat.completions.create({
-          model: 'glm-5',
+          model: llmModel,
           messages: [
             { role: 'system', content: rawPrompt },
             { role: 'user', content: 'Please provide your analysis.' }
@@ -285,6 +297,7 @@ Please provide a comprehensive analysis.
       mode,
       ocr_model: ocrModel,
       ocr_provider: modelConfig.provider,
+      llm_model: llmModel,
       ocr_text: ocrText,
       layout_details: layoutDetails,
       layout_visualization: layoutVisualization,
@@ -292,9 +305,9 @@ Please provide a comprehensive analysis.
       llm_output: llmOutput,
       provenance: {
         mode,
-        model: 'glm-5',
         ocr_model: ocrModel,
         ocr_provider: modelConfig.provider,
+        llm_model: llmModel,  // ✅ NEW: Return which LLM was used
         chunk_count: mode === 'rag' ? ocrText.split(/\n\n+/).length : undefined
       }
     })

@@ -21,38 +21,35 @@ export const GITHUB_README_URL = `${GITHUB_REPO_URL}/blob/main/README.md`
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:5000'
 
-// ── OCR Model Configuration ───────────────────────────────────────────────
-// ✅ Change this ONE line to switch OCR providers:
-//    'qwen-vl-ocr-2025-11-20' → Alibaba Qwen VL OCR (latest)
-//    'glm-ocr'                → Zhipu GLM-OCR (layout parsing)
-//
-// Override via OCR_MODEL env var (set in .env.local or Vercel Dashboard).
-export const OCR_MODEL =
-  process.env.OCR_MODEL || 'qwen-vl-ocr-2025-11-20'
+// ── 🎯 DEFAULT MODELS: QWEN STACK ─────────────────────────────────────────
+// ✅ Change these ONE lines to switch entire app to GLM:
+//    OCR_MODEL: 'qwen-vl-ocr-2025-11-20' → 'glm-ocr'
+//    LLM_MODEL: 'qwen-3.5-plus' → 'glm-5'
 
-// OCR model endpoint + provider mappings (don't need to change these)
+export const OCR_MODEL = process.env.OCR_MODEL || 'qwen-vl-ocr-2025-11-20'  // Qwen default
+export const LLM_MODEL = process.env.LLM_MODEL || 'qwen-3.5-plus'            // Qwen default
+
+// OCR model configurations
 export const OCR_CONFIG = {
-  // Qwen VL OCR models (Alibaba DashScope)
+  // Qwen VL OCR (DashScope native endpoint)
   'qwen-vl-ocr-2025-11-20': {
-    endpoint: '/ocr',
+    endpoint: '/api/v1/services/aigc/multimodal-generation/generation',
     provider: 'qwen',
-    description: 'Qwen VL OCR - Latest version with improved accuracy',
+    isNative: true,
+    description: 'Qwen VL OCR - Latest',
   },
   'qwen-vl-ocr': {
-    endpoint: '/ocr',
+    endpoint: '/api/v1/services/aigc/multimodal-generation/generation',
     provider: 'qwen',
-    description: 'Qwen VL OCR - Stable version',
+    isNative: true,
+    description: 'Qwen VL OCR - Stable',
   },
-  // GLM-OCR models (Zhipu BigModel)
+  // GLM-OCR (OpenAI-compatible endpoint)
   'glm-ocr': {
     endpoint: '/layout_parsing',
     provider: 'glm',
-    description: 'GLM-OCR - Layout-aware text extraction',
-  },
-  'glm-4v': {
-    endpoint: '/chat/completions',
-    provider: 'glm',
-    description: 'GLM-4V - Vision + chat combined',
+    isNative: false,
+    description: 'GLM-OCR - Layout parsing',
   },
 } as const
 
@@ -60,11 +57,11 @@ export const OCR_CONFIG = {
 export type OcrModelKey = keyof typeof OCR_CONFIG
 
 // Helper: Get config for current OCR model
-export const getCurrentOcrConfig = () => {
-  const config = OCR_CONFIG[OCR_MODEL as OcrModelKey]
-  if (!config) {
-    console.warn(`⚠️ Unknown OCR model: ${OCR_MODEL}. Using first available.`)
-    return OCR_CONFIG[Object.keys(OCR_CONFIG)[0] as OcrModelKey]
-  }
-  return config
+export const getCurrentOcrConfig = (model?: string) => {
+  const key = (model || OCR_MODEL) as OcrModelKey
+  return OCR_CONFIG[key] || OCR_CONFIG['qwen-vl-ocr-2025-11-20']
 }
+
+// Supported LLM models
+export const SUPPORTED_LLM_MODELS = ['qwen-3.5-plus', 'glm-5'] as const
+export type LlmModelKey = typeof SUPPORTED_LLM_MODELS[number]
