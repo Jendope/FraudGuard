@@ -1,7 +1,7 @@
 
 'use client'
-import ReactMarkdown from 'react-markdown'
 import { useState } from 'react'
+import ReactMarkdown from 'react-markdown'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
@@ -352,7 +352,18 @@ export default function Home() {
 
                     <div className="p-4 bg-card rounded-xl border">
                       <p className="text-lg font-medium mb-2">Reason:</p>
-                      <p className="text-lg text-muted-foreground">{fraudResult.reason}</p>
+                      <div className="text-lg text-muted-foreground prose prose-sm max-w-none">
+                        <ReactMarkdown
+                          components={{
+                            strong: ({node, ...props}) => (
+                              <strong className="font-bold text-red-600 dark:text-red-400" {...props} />
+                            ),
+                            p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
+                          }}
+                        >
+                          {fraudResult.reason}
+                        </ReactMarkdown>
+                      </div>
                     </div>
                   </div>
                   )
@@ -444,7 +455,28 @@ export default function Home() {
 
                     <div className="p-4 bg-card rounded-xl border">
                       <p className="text-lg font-medium mb-2">AI Analysis:</p>
-                      <p className="text-lg text-muted-foreground whitespace-pre-wrap">{ocrResult.llm_output}</p>
+                      <div className="text-lg text-muted-foreground prose prose-sm max-w-none">
+                        <ReactMarkdown
+                          components={{
+                            // ✅ Style warnings in red + bold for elderly users
+                            strong: ({node, ...props}) => (
+                              <strong className="font-bold text-red-600 dark:text-red-400" {...props} />
+                            ),
+                            // ✅ Style headers with proper spacing
+                            h1: ({node, ...props}) => <h1 className="text-xl font-bold mb-3 mt-4" {...props} />,
+                            h2: ({node, ...props}) => <h2 className="text-lg font-bold mb-2 mt-3" {...props} />,
+                            h3: ({node, ...props}) => <h3 className="text-base font-bold mb-2 mt-3" {...props} />,
+                            // ✅ Style lists with proper indentation
+                            ul: ({node, ...props}) => <ul className="list-disc ml-6 mb-2" {...props} />,
+                            ol: ({node, ...props}) => <ol className="list-decimal ml-6 mb-2" {...props} />,
+                            li: ({node, ...props}) => <li className="mb-1" {...props} />,
+                            // ✅ Keep paragraphs with spacing
+                            p: ({node, ...props}) => <p className="mb-3 last:mb-0" {...props} />,
+                          }}
+                        >
+                          {ocrResult.llm_output}
+                        </ReactMarkdown>
+                      </div>
                     </div>
                   </div>
                 )}
