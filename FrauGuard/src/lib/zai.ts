@@ -1,3 +1,7 @@
+if (typeof process !== 'undefined' && process.env.VERCEL) {
+  process.env.Z_AI_CONFIG_PATH = '/tmp/.z-ai-config';
+}
+
 import fs from 'fs/promises'
 import path from 'path'
 import ZAI from 'z-ai-web-dev-sdk'
