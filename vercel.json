@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "buildCommand": "cd FraudGuard && npm install",
-  "outputDirectory": "FraudGuard/dist",
-  "installCommand": "cd FraudGuard && npm install"
+  "buildCommand": "cd FrauGuard && npm install",
+  "outputDirectory": "FrauGuard/dist",
+  "installCommand": "cd FrauGuard && npm install"
 }
