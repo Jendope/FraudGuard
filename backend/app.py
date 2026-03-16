@@ -1,6 +1,3 @@
-if os.getenv("RENDER", False) or os.getenv("PORT"):
-    CHROMA_DB_PATH = "/tmp/chroma_hk01_scam_db"
-
 import json
 import logging
 import os
@@ -13,12 +10,6 @@ from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
-# ---------------------------------------------------------------------------
-# Suppress the Pydantic V1 deprecation warning emitted by langchain-core on
-# Python 3.14+.  langchain-core still imports ``pydantic.v1`` for backward
-# compatibility, which triggers a UserWarning in ``pydantic>=2.11``.  This is
-# a known upstream issue and safe to silence until langchain-core drops V1.
-# ---------------------------------------------------------------------------
 warnings.filterwarnings(
     "ignore",
     message=r".*Pydantic V1.*",
